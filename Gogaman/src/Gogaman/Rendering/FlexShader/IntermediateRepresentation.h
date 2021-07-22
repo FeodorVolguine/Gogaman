@@ -67,8 +67,18 @@ namespace Gogaman
 				FloatDivide,
 				FloatModulo,
 
+				//Boolean
+				IntegerEquality,
+				IntegerInequality,
+				IntegerLess,
+				IntegerGreater,
+				FloatEquality,
+				FloatInequality,
+				FloatLess,
+				FloatGreater,
+
 				//Miscellaneous
-				Variable,
+				VariableDeclaration,
 				Subscript,
 				VectorSwizzle,
 				Assignment,
@@ -100,7 +110,15 @@ namespace Gogaman
 					"FloatMultiply",
 					"FloatDivide",
 					"FloatModulo",
-					"Variable",
+					"IntegerEquality",
+					"IntegerInequality",
+					"IntegerLess",
+					"IntegerGreater",
+					"FloatEquality",
+					"FloatInequality",
+					"FloatLess",
+					"FloatGreater",
+					"VariableDeclaration",
 					"Subscript",
 					"VectorSwizzle",
 					"Assignment",
@@ -153,13 +171,13 @@ namespace Gogaman
 
 				inline bool operator==(const Address &other) const { return m_Data == other.m_Data; }
 
-				inline const Type GetType() const { return (Type)(m_Data >> 30); }
+				inline Type GetType() const { return (Type)(m_Data >> 30); }
 
-				inline const FlexShader::Type GetDataType() const { return (FlexShader::Type)((m_Data & 0x3FFFFFFF) >> 26); }
+				inline FlexShader::Type GetDataType() const { return (FlexShader::Type)((m_Data & 0x3FFFFFFF) >> 26); }
 
-				inline const uint32_t GetValue() const { return m_Data & 0x3FFFFFF; }
+				inline uint32_t GetValue() const { return m_Data & 0x3FFFFFF; }
 
-				inline const bool IsValid() const { return m_Data != GM_FLEX_SHADER_IR_INVALID_ADDRESS_DATA; }
+				inline bool IsValid() const { return m_Data != GM_FLEX_SHADER_IR_INVALID_ADDRESS_DATA; }
 			private:
 				uint32_t m_Data;
 			private:
@@ -170,6 +188,11 @@ namespace Gogaman
 			{
 				inline uint32_t operator()(const Address &address) const { return std::hash<uint32_t>()(address.m_Data); }
 			};
+
+			inline std::string AddressString(const Address address)
+			{
+				return std::to_string(address.GetValue()) + " " + GetTypeString(address.GetDataType()) + " " + Address::GetTypeString(address.GetType());
+			}
 
 			struct Instruction
 			{
@@ -262,10 +285,10 @@ namespace Gogaman
 					{
 						if(instruction.address2.IsValid())
 						{
-							GM_LOG_CORE_INFO("%d: %s | Address 1: %d %s (%s) | Address 2: %d %s (%s)", executionIndex, GetOperationString(instruction.operation).c_str(), instruction.address1.GetValue(), GetTypeString(instruction.address1.GetDataType()).c_str(), Address::GetTypeString(instruction.address1.GetType()).c_str(), instruction.address2.GetValue(), GetTypeString(instruction.address2.GetDataType()).c_str(), Address::GetTypeString(instruction.address2.GetType()).c_str());
+							GM_LOG_CORE_INFO("%d: %s | Address 1: %s | Address 2: %s", executionIndex, GetOperationString(instruction.operation).c_str(), AddressString(instruction.address1).c_str(), AddressString(instruction.address2).c_str());
 						}
 						else
-							GM_LOG_CORE_INFO("%d: %s | Address 1: %d %s (%s)", executionIndex, GetOperationString(instruction.operation).c_str(), instruction.address1.GetValue(), GetTypeString(instruction.address1.GetDataType()).c_str(), Address::GetTypeString(instruction.address1.GetType()).c_str());
+							GM_LOG_CORE_INFO("%d: %s | Address 1: %s", executionIndex, GetOperationString(instruction.operation).c_str(), AddressString(instruction.address1).c_str());
 					}
 					else
 						GM_LOG_CORE_INFO("%d: %s", executionIndex, GetOperationString(instruction.operation).c_str());					

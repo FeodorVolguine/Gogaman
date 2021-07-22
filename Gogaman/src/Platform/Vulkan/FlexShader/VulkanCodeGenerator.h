@@ -104,7 +104,7 @@ namespace Gogaman
 				std::vector<uint32_t> m_Stream;
 			};
 		public:
-			CodeGenerator(const IR::IR &intermediateRepresentation, const std::string &entryPointName);
+			CodeGenerator(const IR::SSA &ssa, const std::string &entryPointName);
 			~CodeGenerator() = default;
 
 			inline const std::pair<uint32_t, const uint8_t *> GetData() const { return { m_Instructions.GetStream().size() * sizeof(uint32_t), (uint8_t *)m_Instructions.GetStream().data() }; }

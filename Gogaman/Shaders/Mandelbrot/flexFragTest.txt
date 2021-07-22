@@ -1,6 +1,7 @@
 {
 	void main()
 	{
+		/*
 		float test;
 		if(88.)
 		{
@@ -11,9 +12,15 @@
 			test = 2.0f;
 
 		float test2 = test * 0.3f;
-
-		//input float2 uv;
-		//output float2 result = uv;
-		//return;
+		*/
+		input float2 uv;
+		float2 gaga = uv;
+		if(gaga.x > 0.2f)
+			gaga.x = 0.75f;
+		else
+			gaga.x = 0.25f;
+		
+		output float2 result = gaga;
+		return;
 	}
 }

@@ -3,7 +3,7 @@
 
 #include "Gogaman/RenderHardwareInterface/Device.h"
 
-//#include "Platform/Vulkan/FlexShader/SPIRV_Dissasembler.h"
+#include "Platform/Vulkan/FlexShader/SPIRV_Dissasembler.h"
 
 namespace Gogaman
 {
@@ -16,6 +16,8 @@ namespace Gogaman
 
 			uint32_t *alignedSourceData = new uint32_t[sourceDataSize / sizeof(uint32_t)];
 			memcpy(alignedSourceData, sourceData, sourceDataSize);
+
+			printSPIRV(sourceDataSize / 4, alignedSourceData);
 
 			VkShaderModuleCreateInfo shaderModuleDescriptor = {};
 			shaderModuleDescriptor.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;

@@ -31,9 +31,7 @@ namespace Gogaman
 
 			const char **supportedExtensionNames = new const char *[supportedExtensionCount];
 			for(uint32_t i = 0; i < supportedExtensionCount; i++)
-			{
 				supportedExtensionNames[i] = supportedExtensions[i].extensionName;
-			}
 
 			//Retrieve required Vulkan extensions
 			uint32_t glfwExtensionCount;

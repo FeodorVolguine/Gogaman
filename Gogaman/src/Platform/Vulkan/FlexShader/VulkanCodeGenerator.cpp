@@ -4,13 +4,14 @@
 #include "Gogaman/Utilities/Cast.h"
 
 #include "Gogaman/Rendering/FlexShader/IntermediateRepresentation.h"
+#include "Gogaman/Rendering/FlexShader/StaticSingleAssignment.h"
 
 namespace Gogaman
 {
 	namespace FlexShader
 	{
-		CodeGenerator::CodeGenerator(const IR::IR &intermediateRepresentation, const std::string &entryPointName)
-			: AbstractCodeGenerator(intermediateRepresentation, entryPointName)
+		CodeGenerator::CodeGenerator(const IR::SSA &ssa, const std::string &entryPointName)
+			: AbstractCodeGenerator(ssa, entryPointName)
 		{
 			using namespace IR;
 
@@ -96,11 +97,11 @@ namespace Gogaman
 
 			for(uint8_t i = 0; i < 16; i++)
 			{
-				if(intermediateRepresentation.descriptors[i].size())
+				if(ssa.GetIR().descriptors[i].size())
 				{
 					std::vector<Type> types;
-					types.reserve(intermediateRepresentation.descriptors[i].size());
-					for(const Address j : intermediateRepresentation.descriptors[i])
+					types.reserve(ssa.GetIR().descriptors[i].size());
+					for(const Address j : ssa.GetIR().descriptors[i])
 						types.emplace_back(j.GetDataType());
 
 					if(!structTypeIDs.contains(types))
@@ -118,7 +119,7 @@ namespace Gogaman
 			std::unordered_set<FunctionSignature, HashFunctionSignature>           functionSignatures;
 			//This hash function uses parameter IDs and parameter types... it should only be the type probably
 			std::unordered_map<FunctionSignature, uint32_t, HashFunctionSignature> functionSignatureTypeIDs;
-			for(auto &[functionID, signature] : intermediateRepresentation.functionSignatures)
+			for(auto &[functionID, signature] : ssa.GetIR().functionSignatures)
 			{
 				if(!functionSignatures.contains(signature))
 				{
@@ -127,44 +128,21 @@ namespace Gogaman
 				}
 			}
 
-			std::unordered_map<uint32_t, uint32_t> leaderInstructionBasicBlocks;
-			for(uint32_t i = 0; i < intermediateRepresentation.executionOrder.size(); i++)
+			std::vector<uint32_t> basicBlockIDs;
+			basicBlockIDs.reserve(ssa.GetBasicBlocks().size());
+			std::unordered_map<uint32_t, uint16_t> leaderInstructionBlockIDs;
+			leaderInstructionBlockIDs.reserve(ssa.GetBasicBlocks().size());
+			for(uint16_t i = 0; i < ssa.GetBasicBlocks().size(); i++)
 			{
-				const Instruction &instruction = intermediateRepresentation.instructions[intermediateRepresentation.executionOrder[i]];
-				switch(instruction.operation)
-				{
-				case Operation::Branch:
-					if(!leaderInstructionBasicBlocks.contains(instruction.address1.GetValue()))
-						leaderInstructionBasicBlocks[instruction.address1.GetValue()] = currentID++;
-
-					if((i + 1) < intermediateRepresentation.executionOrder.size())
-					{
-						const uint32_t nextInstructionIndex = intermediateRepresentation.executionOrder[i + 1];
-						if(!leaderInstructionBasicBlocks.contains(nextInstructionIndex))
-							leaderInstructionBasicBlocks[nextInstructionIndex] = currentID++;
-					}
-
-					break;
-				case Operation::BranchOnNotEqual:
-					if(!leaderInstructionBasicBlocks.contains(instruction.address2.GetValue()))
-						leaderInstructionBasicBlocks[instruction.address2.GetValue()] = currentID++;
-
-					if((i + 1) < intermediateRepresentation.executionOrder.size())
-					{
-						const uint32_t nextInstructionIndex = intermediateRepresentation.executionOrder[i + 1];
-						if(!leaderInstructionBasicBlocks.contains(nextInstructionIndex))
-							leaderInstructionBasicBlocks[nextInstructionIndex] = currentID++;
-					}
-
-					break;
-				}
+				basicBlockIDs.emplace_back(currentID);
+				leaderInstructionBlockIDs[ssa.GetBasicBlocks()[i].front()] = currentID++;
 			}
 
 			std::unordered_map<uint32_t, uint32_t> variableIDs;
-			variableIDs.reserve(intermediateRepresentation.variableSpecifiers.size());
+			variableIDs.reserve(ssa.GetIR().variableSpecifiers.size());
 			std::vector<uint32_t> functionIDs, instructionResultIDs;
-			functionIDs.reserve(intermediateRepresentation.functionSignatures.size());
-			instructionResultIDs.resize(intermediateRepresentation.instructions.size());
+			functionIDs.reserve(ssa.GetIR().functionSignatures.size());
+			instructionResultIDs.resize(ssa.GetIR().instructions.size());
 
 			//OpConstantFalse
 			m_ConstantInstructions.AddInstruction(42, m_TypeIDs[(uint8_t)Type::Boolean], currentID);
@@ -173,20 +151,20 @@ namespace Gogaman
 			m_ConstantInstructions.AddInstruction(41, m_TypeIDs[(uint8_t)Type::Boolean], currentID);
 			m_BooleanConstantIDs[1] = currentID++;
 
-			m_IntegerConstantIDs.reserve(intermediateRepresentation.integerConstantValues.size());
-			for(uint32_t i = 0; i < intermediateRepresentation.integerConstantValues.size(); i++)
+			m_IntegerConstantIDs.reserve(ssa.GetIR().integerConstantValues.size());
+			for(uint32_t i = 0; i < ssa.GetIR().integerConstantValues.size(); i++)
 			{
 				//OpConstant
-				m_ConstantInstructions.AddInstruction(43, m_TypeIDs[(uint8_t)Type::Integer], currentID, intermediateRepresentation.integerConstantValues[i]);
+				m_ConstantInstructions.AddInstruction(43, m_TypeIDs[(uint8_t)Type::Integer], currentID, ssa.GetIR().integerConstantValues[i]);
 				m_IntegerConstantIDs.emplace_back(currentID++);
 			}
 
-			m_FloatConstantIDs.reserve(intermediateRepresentation.floatConstantValues.size());
-			for(uint32_t i = 0; i < intermediateRepresentation.floatConstantValues.size(); i++)
+			m_FloatConstantIDs.reserve(ssa.GetIR().floatConstantValues.size());
+			for(uint32_t i = 0; i < ssa.GetIR().floatConstantValues.size(); i++)
 			{
 				GM_STATIC_ASSERT(sizeof(float) == sizeof(uint32_t));
 				//OpConstant
-				m_ConstantInstructions.AddInstruction(43, m_TypeIDs[(uint8_t)Type::Float], currentID, BitwiseCast<uint32_t>(intermediateRepresentation.floatConstantValues[i]));
+				m_ConstantInstructions.AddInstruction(43, m_TypeIDs[(uint8_t)Type::Float], currentID, BitwiseCast<uint32_t>(ssa.GetIR().floatConstantValues[i]));
 				m_FloatConstantIDs.emplace_back(currentID++);
 			}
 
@@ -197,14 +175,14 @@ namespace Gogaman
 			Address descriptorGroupBaseAddresses[16];
 			for(uint8_t i = 0; i < 16; i++)
 			{
-				const uint8_t descriptorCount = intermediateRepresentation.descriptors[i].size();
+				const uint8_t descriptorCount = ssa.GetIR().descriptors[i].size();
 				if(descriptorCount)
 				{
 					if(descriptorCount > largestDescriptorGroupDescriptorCount)
 						largestDescriptorGroupDescriptorCount = descriptorCount;
 
 					descriptorGroupIDs[i] = currentID++;
-					descriptorGroupBaseAddresses[i] = intermediateRepresentation.descriptors[i].front();
+					descriptorGroupBaseAddresses[i] = ssa.GetIR().descriptors[i].front();
 				}
 			}
 
@@ -222,7 +200,7 @@ namespace Gogaman
 				case Address::Type::Variable:
 					if(!variableIDs.contains(address.GetValue()))
 					{
-						const VariableSpecifier specifier = intermediateRepresentation.variableSpecifiers[address.GetValue()];
+						const VariableSpecifier specifier = ssa.GetIR().variableSpecifiers[address.GetValue()];
 						if((uint8_t)specifier < 16)
 						{
 							const uint32_t identifier = currentID++;
@@ -260,7 +238,7 @@ namespace Gogaman
 				{
 					if(loadVariable)
 					{
-						const Instruction &intr = intermediateRepresentation.instructions[address.GetValue()];
+						const Instruction &intr = ssa.GetIR().instructions[address.GetValue()];
 						if(intr.operation == Operation::VectorSwizzle)
 						{
 							if(GetTypeComponentCount((Type)(intr.data2 & 0xFF)) == 1)
@@ -277,9 +255,327 @@ namespace Gogaman
 				}
 			};
 
-			for(uint32_t i = 0; i < intermediateRepresentation.executionOrder.size(); i++)
+			for(uint16_t i = 0; i < ssa.GetBasicBlocks().size(); i++)
 			{
-				const uint32_t instructionIndex = intermediateRepresentation.executionOrder[i];
+				const SSA::Block &block = ssa.GetBasicBlocks()[i];
+
+				uint32_t offset;
+
+				const Instruction &firstInstruction = ssa.GetIR().instructions[block.front()];
+				if(firstInstruction.operation == Operation::BeginFunction)
+				{
+					const FunctionSignature &signature = ssa.GetIR().functionSignatures.at(firstInstruction.address1.GetValue());
+					//OpFunction
+					irStream.AddInstruction(54, m_TypeIDs[(uint8_t)signature.returnType], functionIDs.emplace_back(currentID++), 0, functionSignatureTypeIDs[signature]);
+					for(auto j = 0; j < signature.parameterIDs.size(); j++)
+					{
+						variableIDs[signature.parameterIDs[j]] = currentID++;
+						//OpFunctionParameter
+						irStream.AddInstruction(55, m_FunctionVariableTypeIDs[(uint8_t)signature.parameterTypes[j]], { variableIDs[signature.parameterIDs[j]] });
+					}
+
+					//OpLabel
+					irStream.AddInstruction(248, currentID++);
+
+					const auto ProcessLocalVariables = [&]()
+					{
+						for(uint16_t j = i; j < ssa.GetBasicBlocks().size(); j++)
+						{
+							for(uint32_t k = 0; k < ssa.GetBasicBlocks()[j].size(); k++)
+							{
+								Instruction currentInstruction = ssa.GetIR().instructions[ssa.GetBasicBlocks()[j][k]];
+								if(currentInstruction.operation == Operation::EndFunction)
+									return;
+								else if(currentInstruction.operation == Operation::VariableDeclaration)
+								{
+									variableIDs[currentInstruction.address1.GetValue()] = currentID;
+									if(ssa.GetIR().variableSpecifiers[currentInstruction.address1.GetValue()] == VariableSpecifier::Input)
+									{
+										//OpDecorate | Location
+										m_DecorationInstructions.AddInstruction(71, currentID, 30, inputIDs.size());
+										//OpVariable | Storage class: Input
+										m_GlobalVariableDeclarationInstructions.AddInstruction(59, m_InputVariableTypeIDs[(uint8_t)currentInstruction.address1.GetDataType()], currentID, 1);
+										inputIDs.emplace_back(currentID);
+									}
+									else if(ssa.GetIR().variableSpecifiers[currentInstruction.address1.GetValue()] == VariableSpecifier::Output)
+									{
+										//OpDecorate | Location
+										m_DecorationInstructions.AddInstruction(71, currentID, 30, outputIDs.size());
+										//OpVariable | Storage class: Output
+										m_GlobalVariableDeclarationInstructions.AddInstruction(59, m_OutputVariableTypeIDs[(uint8_t)currentInstruction.address1.GetDataType()], currentID, 3);
+										outputIDs.emplace_back(currentID);
+									}
+									else
+										//OpVariable | Storage class: Function
+										irStream.AddInstruction(59, m_FunctionVariableTypeIDs[(uint8_t)currentInstruction.address1.GetDataType()], currentID, 7);
+									currentID++;
+								}
+							}
+						}
+					};
+
+					ProcessLocalVariables();
+
+					offset = 1;
+				}
+				else
+				{
+					//OpLabel
+					irStream.AddInstruction(248, basicBlockIDs[i]);
+
+					offset = 0;
+				}
+
+				for(uint32_t j = offset; j < block.size(); j++)
+				{
+					Instruction instruction = ssa.GetIR().instructions[block[j]];
+					switch(instruction.operation)
+					{
+					case Operation::IntegerAdd:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpIAdd
+						irStream.AddInstruction(128, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerSubtract:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpISub
+						irStream.AddInstruction(130, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()],  instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerMultiply:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpIMul
+						irStream.AddInstruction(132, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerDivide:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpSDiv
+						irStream.AddInstruction(135, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerModulo:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpSMod
+						irStream.AddInstruction(139, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatAdd:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFAdd
+						irStream.AddInstruction(129, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatSubtract:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFSub
+						irStream.AddInstruction(131, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()],  instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatMultiply:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFMul
+						irStream.AddInstruction(133, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatDivide:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFDiv
+						irStream.AddInstruction(136, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatModulo:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFMod
+						irStream.AddInstruction(141, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerEquality:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpIEqual
+						irStream.AddInstruction(170, m_TypeIDs[(uint8_t)Type::Boolean], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerInequality:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpINotEqual
+						irStream.AddInstruction(171, m_TypeIDs[(uint8_t)Type::Boolean],  instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerLess:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpSLessThan
+						irStream.AddInstruction(177, m_TypeIDs[(uint8_t)Type::Boolean], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::IntegerGreater:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpSGreaterThan
+						irStream.AddInstruction(173, m_TypeIDs[(uint8_t)Type::Boolean], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatEquality:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFOrdEqual
+						irStream.AddInstruction(180, m_TypeIDs[(uint8_t)Type::Boolean], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatInequality:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFOrdNotEqual
+						irStream.AddInstruction(182, m_TypeIDs[(uint8_t)Type::Boolean],  instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatLess:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFOrdLessThan
+						irStream.AddInstruction(184, m_TypeIDs[(uint8_t)Type::Boolean], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::FloatGreater:
+						instructionResultIDs[block[j]] = currentID++;
+						//OpFOrdGreaterThan
+						irStream.AddInstruction(186, m_TypeIDs[(uint8_t)Type::Boolean], instructionResultIDs[block[j]], GetAddressID(instruction.address1, true), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::VectorSwizzle:
+					{
+						instructionResultIDs[block[j]] = currentID++;
+
+						const Type    resultType     = (Type)(instruction.data2 & 0xFF);
+						const uint8_t componentCount = GetTypeComponentCount(resultType);
+						if(componentCount == 1)
+						{
+							if(ssa.GetIR().variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::None)
+								//OpAccessChain
+								irStream.AddInstruction(65, m_FunctionVariableTypeIDs[(uint8_t)resultType], instructionResultIDs[block[j]], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
+							else if(ssa.GetIR().variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::Input)
+								//OpAccessChain
+								irStream.AddInstruction(65, m_InputVariableTypeIDs[(uint8_t)resultType], instructionResultIDs[block[j]], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
+							else if(ssa.GetIR().variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::Output)
+								//OpAccessChain
+								irStream.AddInstruction(65, m_OutputVariableTypeIDs[(uint8_t)resultType], instructionResultIDs[block[j]], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
+							else
+								//OpAccessChain
+								irStream.AddInstruction(65, descriptorTypeID, instructionResultIDs[block[j]], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
+						}
+						else
+						{
+							std::vector<uint32_t> components;
+							components.reserve(componentCount);
+							for(uint8_t j = 0; j < componentCount; j++)
+								components.emplace_back((instruction.data2 >> (8 + j * 2)) & 3);
+
+							const uint32_t vectorAddress = GetAddressID(instruction.address1, true);
+							//OpVectorShuffle
+							irStream.AddInstruction(79, m_TypeIDs[(uint8_t)resultType], instructionResultIDs[block[j]], vectorAddress, vectorAddress, components);
+						}
+						break;
+					}
+					case Operation::Assignment:
+						//OpStore
+						irStream.AddInstruction(62, GetAddressID(instruction.address1), GetAddressID(instruction.address2, true));
+						break;
+					case Operation::Branch:
+						//OpBranch
+						irStream.AddInstruction(249, leaderInstructionBlockIDs[instruction.address1.GetValue()]);
+						break;
+					case Operation::BranchOnNotEqual:
+						//HARDCODED TO BLOCK 3, CHANGE THIS
+						//OpSelectionMerge
+						irStream.AddInstruction(247, basicBlockIDs[3], 0);
+						//OpBranchConditional
+						irStream.AddInstruction(250, GetAddressID(instruction.address1, true), { basicBlockIDs[i + 1], leaderInstructionBlockIDs[instruction.address2.GetValue()] });
+						break;
+					case Operation::EndFunction:
+						//Inject return
+						//OpReturn
+						//irStream.AddInstruction(253);
+
+						//OpFunctionEnd
+						irStream.AddInstruction(56);
+						break;
+					case Operation::Return:
+						if(instruction.address1.IsValid())
+							//OpReturnValue
+							irStream.AddInstruction(254, GetAddressID(instruction.address1, true));
+						else
+							//OpReturn
+							irStream.AddInstruction(253);
+						break;
+					case Operation::FunctionParameter:
+					{
+						std::vector<uint32_t> argumentIDs;
+						#if 0
+						while(instruction.operation == Operation::FunctionParameter)
+						{
+							if(instruction.address1.GetType() == Address::Type::ConstantOrVector)
+							{
+								//OpVariable | Storage class: Function
+								irStream.AddInstruction(59, m_FunctionVariableTypeIDs[(uint8_t)instruction.address1.GetDataType()], currentID, 7, GetAddressID(instruction.address1));
+								argumentIDs.emplace_back(currentID++);
+							}
+							else
+								argumentIDs.emplace_back(GetAddressID(instruction.address1));
+
+							instruction = ssa.GetIR().instructions[ssa.GetIR().executionOrder[++i]];
+							instructionResultIDs[block[j]] = currentID++;
+						}
+						#endif
+						while(instruction.operation == Operation::FunctionParameter)
+						{
+							argumentIDs.emplace_back(GetAddressID(instruction.address1, true));
+
+							instruction = ssa.GetIR().instructions[block[++j]];
+							instructionResultIDs[block[j]] = currentID++;
+						}
+
+						if(instruction.operation == Operation::FunctionCall)
+							//OpFunctionCall
+							irStream.AddInstruction(57, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], functionIDs[instruction.address1.GetValue()], argumentIDs);
+						else
+						{
+							switch((IntrinsicFunction)instruction.data1)
+							{
+							case IntrinsicFunction::Sin:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 13, argumentIDs);
+								break;
+							case IntrinsicFunction::Cos:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 14, argumentIDs);
+								break;
+							case IntrinsicFunction::Tan:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 15, argumentIDs);
+								break;
+							case IntrinsicFunction::Power:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 20, argumentIDs);
+								break;
+							case IntrinsicFunction::NaturalExponentiation:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 27, argumentIDs);
+								break;
+							case IntrinsicFunction::NaturalLogarithm:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 28, argumentIDs);
+								break;
+							case IntrinsicFunction::SquareRoot:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 31, argumentIDs);
+								break;
+							case IntrinsicFunction::InverseSquareRoot:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 32, argumentIDs);
+								break;
+							case IntrinsicFunction::Step:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 48, argumentIDs);
+								break;
+							case IntrinsicFunction::SmoothStep:
+								//OpExtInst
+								irStream.AddInstruction(12, m_TypeIDs[(uint8_t)Type::Float], instructionResultIDs[block[j]], glslStd450InstructionSetID, 49, argumentIDs);
+								break;
+							}
+						}
+
+						break;
+					}
+					case Operation::FunctionCall:
+						//OpFunctionCall
+						irStream.AddInstruction(57, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[block[j]], functionIDs[instruction.address1.GetValue()]);
+						break;
+					}
+				}
+			}
+			/*
+			for(uint32_t i = 0; i < ssa.GetIR().executionOrder.size(); i++)
+			{
+				const uint32_t instructionIndex = ssa.GetIR().executionOrder[i];
 
 				if(leaderInstructionBasicBlocks.contains(instructionIndex))
 					//OpLabel
@@ -288,7 +584,7 @@ namespace Gogaman
 				//NOT EVERY INSTRUCTION HAS A RESULT
 				instructionResultIDs[i] = currentID++;
 
-				Instruction instruction = intermediateRepresentation.instructions[instructionIndex];
+				Instruction instruction = ssa.GetIR().instructions[instructionIndex];
 				switch(instruction.operation)
 				{
 				case Operation::IntegerAdd:
@@ -337,13 +633,13 @@ namespace Gogaman
 					const uint8_t componentCount = GetTypeComponentCount(resultType);
 					if(componentCount == 1)
 					{
-						if(intermediateRepresentation.variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::None)
+						if(ssa.GetIR().variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::None)
 							//OpAccessChain
 							irStream.AddInstruction(65, m_FunctionVariableTypeIDs[(uint8_t)resultType], instructionResultIDs[i], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
-						else if(intermediateRepresentation.variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::Input)
+						else if(ssa.GetIR().variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::Input)
 							//OpAccessChain
 							irStream.AddInstruction(65, m_InputVariableTypeIDs[(uint8_t)resultType], instructionResultIDs[i], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
-						else if(intermediateRepresentation.variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::Output)
+						else if(ssa.GetIR().variableSpecifiers[instruction.address1.GetValue()] == VariableSpecifier::Output)
 							//OpAccessChain
 							irStream.AddInstruction(65, m_OutputVariableTypeIDs[(uint8_t)resultType], instructionResultIDs[i], GetAddressID(instruction.address1), structMemberAccessConstantIDs[(instruction.data2 >> 8) & 3]);
 						else
@@ -354,8 +650,8 @@ namespace Gogaman
 					{
 						std::vector<uint32_t> components;
 						components.reserve(componentCount);
-						for(uint8_t i = 0; i < componentCount; i++)
-							components.emplace_back((instruction.data2 >> (8 + i * 2)) & 3);
+						for(uint8_t j = 0; j < componentCount; j++)
+							components.emplace_back((instruction.data2 >> (8 + j * 2)) & 3);
 
 						const uint32_t vectorAddress = GetAddressID(instruction.address1, true);
 						//OpVectorShuffle
@@ -373,31 +669,31 @@ namespace Gogaman
 					break;
 				case Operation::BranchOnNotEqual:
 					//OpBranchConditional
-					irStream.AddInstruction(250, GetAddressID(instruction.address1, true), { leaderInstructionBasicBlocks[intermediateRepresentation.executionOrder[i + 1]], leaderInstructionBasicBlocks[instruction.address2.GetValue()] });
+					irStream.AddInstruction(250, GetAddressID(instruction.address1, true), { leaderInstructionBasicBlocks[ssa.GetIR().executionOrder[i + 1]], leaderInstructionBasicBlocks[instruction.address2.GetValue()] });
 					break;
 				case Operation::BeginFunction:
 				{
-					const FunctionSignature &signature = intermediateRepresentation.functionSignatures.at(instruction.address1.GetValue());
+					const FunctionSignature &signature = ssa.GetIR().functionSignatures.at(instruction.address1.GetValue());
 					//OpFunction
 					irStream.AddInstruction(54, m_TypeIDs[(uint8_t)signature.returnType], functionIDs.emplace_back(currentID++), 0, functionSignatureTypeIDs[signature]);
-					for(auto i = 0; i < signature.parameterIDs.size(); i++)
+					for(auto j = 0; j < signature.parameterIDs.size(); j++)
 					{
-						variableIDs[signature.parameterIDs[i]] = currentID++;
+						variableIDs[signature.parameterIDs[j]] = currentID++;
 						//OpFunctionParameter
-						irStream.AddInstruction(55, m_FunctionVariableTypeIDs[(uint8_t)signature.parameterTypes[i]], { variableIDs[signature.parameterIDs[i]] });
+						irStream.AddInstruction(55, m_FunctionVariableTypeIDs[(uint8_t)signature.parameterTypes[j]], { variableIDs[signature.parameterIDs[j]] });
 					}
 
 					//OpLabel
 					irStream.AddInstruction(248, currentID++);
 
 					uint32_t executionIndex = i + 1;
-					Instruction currentInstruction = intermediateRepresentation.instructions[intermediateRepresentation.executionOrder[executionIndex]];
+					Instruction currentInstruction = ssa.GetIR().instructions[ssa.GetIR().executionOrder[executionIndex]];
 					while(currentInstruction.operation != Operation::EndFunction)
 					{
-						if(currentInstruction.operation == Operation::Variable)
+						if(currentInstruction.operation == Operation::VariableDeclaration)
 						{
 							variableIDs[currentInstruction.address1.GetValue()] = currentID;
-							if(intermediateRepresentation.variableSpecifiers[currentInstruction.address1.GetValue()] == VariableSpecifier::Input)
+							if(ssa.GetIR().variableSpecifiers[currentInstruction.address1.GetValue()] == VariableSpecifier::Input)
 							{
 								//OpDecorate | Location
 								m_DecorationInstructions.AddInstruction(71, currentID, 30, inputIDs.size());
@@ -405,7 +701,7 @@ namespace Gogaman
 								m_GlobalVariableDeclarationInstructions.AddInstruction(59, m_InputVariableTypeIDs[(uint8_t)currentInstruction.address1.GetDataType()], currentID, 1);
 								inputIDs.emplace_back(currentID);
 							}
-							else if(intermediateRepresentation.variableSpecifiers[currentInstruction.address1.GetValue()] == VariableSpecifier::Output)
+							else if(ssa.GetIR().variableSpecifiers[currentInstruction.address1.GetValue()] == VariableSpecifier::Output)
 							{
 								//OpDecorate | Location
 								m_DecorationInstructions.AddInstruction(71, currentID, 30, outputIDs.size());
@@ -419,7 +715,7 @@ namespace Gogaman
 							currentID++;
 						}
 
-						currentInstruction = intermediateRepresentation.instructions[intermediateRepresentation.executionOrder[++executionIndex]];
+						currentInstruction = ssa.GetIR().instructions[ssa.GetIR().executionOrder[++executionIndex]];
 					}
 
 					break;
@@ -428,9 +724,9 @@ namespace Gogaman
 					//Inject return
 					//OpReturn
 					//irStream.AddInstruction(253);
+					
 					//OpFunctionEnd
 					irStream.AddInstruction(56);
-
 					break;
 				case Operation::Return:
 					if(instruction.address1.IsValid())
@@ -455,7 +751,7 @@ namespace Gogaman
 						else
 							argumentIDs.emplace_back(GetAddressID(instruction.address1));
 
-						instruction = intermediateRepresentation.instructions[intermediateRepresentation.executionOrder[++i]];
+						instruction = ssa.GetIR().instructions[ssa.GetIR().executionOrder[++i]];
 						instructionResultIDs[i] = currentID++;
 					}
 					#endif
@@ -463,7 +759,7 @@ namespace Gogaman
 					{
 						argumentIDs.emplace_back(GetAddressID(instruction.address1, true));
 
-						instruction = intermediateRepresentation.instructions[intermediateRepresentation.executionOrder[++i]];
+						instruction = ssa.GetIR().instructions[ssa.GetIR().executionOrder[++i]];
 						instructionResultIDs[i] = currentID++;
 					}
 
@@ -524,7 +820,7 @@ namespace Gogaman
 					irStream.AddInstruction(57, m_TypeIDs[(uint8_t)instruction.address1.GetDataType()], instructionResultIDs[i], functionIDs[instruction.address1.GetValue()]);
 					break;
 				}
-			}
+			}*/
 
 			//Magic number
 			m_Instructions += 0x07230203;
@@ -615,7 +911,7 @@ namespace Gogaman
 
 			for(uint8_t i = 0; i < 16; i++)
 			{
-				if(intermediateRepresentation.descriptors[i].size())
+				if(ssa.GetIR().descriptors[i].size())
 				{
 					//OpDecorate | DescriptorSet
 					m_DecorationInstructions.AddInstruction(71, descriptorGroupIDs[i], 34, i);

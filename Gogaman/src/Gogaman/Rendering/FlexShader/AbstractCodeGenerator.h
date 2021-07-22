@@ -6,7 +6,7 @@ namespace Gogaman
 {
 	namespace FlexShader
 	{
-		namespace IR { struct IR; }
+		namespace IR { class SSA; }
 
 		template<typename ImplementationType>
 		class AbstractCodeGenerator : public CRTP<ImplementationType, AbstractCodeGenerator>
@@ -14,7 +14,7 @@ namespace Gogaman
 		public:
 			inline constexpr const std::pair<uint32_t, const uint8_t *> GetData() const { return this->GetImplementation().GetData(); }
 		private:
-			AbstractCodeGenerator(const IR::IR &intermediateRepresentation, const std::string &entryPointName)
+			AbstractCodeGenerator(const IR::SSA &ssa, const std::string &entryPointName)
 			{}
 
 			~AbstractCodeGenerator() = default;

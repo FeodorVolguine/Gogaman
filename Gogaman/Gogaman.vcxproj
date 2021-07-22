@@ -177,6 +177,8 @@
     <ClInclude Include="src\Gogaman\EntryPoint.h" />
     <ClInclude Include="src\pch.h" />
     <ClInclude Include="src\Gogaman\RenderHardwareInterface\ShaderProgram.h" />
+    <ClInclude Include="src\Platform\Vulkan\FlexShader\SPIRV_Dissasembler.h" />
+    <ClInclude Include="src\Platform\Vulkan\FlexShader\SPIRV_opcode.h" />
     <ClInclude Include="src\Platform\Vulkan\FlexShader\VulkanCodeGenerator.h" />
     <ClInclude Include="src\Platform\Vulkan\RenderHardwareInterface\VulkanBuffer.h" />
     <ClInclude Include="src\Platform\Vulkan\RenderHardwareInterface\VulkanCommandBuffer.h" />

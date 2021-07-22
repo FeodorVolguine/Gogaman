@@ -1,5 +1,7 @@
 #pragma once
 
+#include "SPIRV_opcode.h"
+
 struct sv_instr {
 	uint16_t word_count;
 	uint16_t opcode;
@@ -123,7 +125,7 @@ inline int printSPIRV(uint32_t numWords, uint32_t *wordz)
 
 	for(i = 0; i < mod.num_instrs; ++i)
 	{
-		printf("OpCode: %d | ", mod.instrs[i].opcode);
+		printf("%s | ", svOpCodeName((SpvOp)mod.instrs[i].opcode).c_str());
 		for(uint32_t j = 1; j < mod.instrs[i].word_count; j++)
 		{
 			printf("Operand %d: %d | ", j, mod.instrs[i].operands[j]);

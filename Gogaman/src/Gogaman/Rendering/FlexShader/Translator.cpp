@@ -81,7 +81,7 @@ namespace Gogaman
 				m_IR.descriptors[(uint8_t)node.specifier].emplace_back(address);
 
 			m_IR.executionOrder.emplace_back(m_IR.instructions.size());
-			AddInstruction(IR::Operation::Variable, address);
+			AddInstruction(IR::Operation::VariableDeclaration, address);
 			return address;
 		}
 
@@ -171,7 +171,7 @@ namespace Gogaman
 			else
 				resultType = Type((uint8_t)Type::Float + (node.memberName.size() - 1));
 
-			uint32_t components = (uint32_t)resultType;
+			uint32_t componentEncoding = (uint32_t)resultType;
 
 			GM_DEBUG_ASSERT(node.memberName.size() <= 4, "Failed to translate FlexShader member selection | Member name \"%s\" is invalid", node.memberName.c_str());
 			for(auto i = 0; i < node.memberName.size(); i++)
@@ -183,15 +183,15 @@ namespace Gogaman
 					break;
 				case 'y':
 				case 'g':
-					components |= 1 << (8 + i * 2);
+					componentEncoding |= 1 << (8 + i * 2);
 					break;
 				case 'z':
 				case 'b':
-					components |= 2 << (8 + i * 2);
+					componentEncoding |= 2 << (8 + i * 2);
 					break;
 				case 'w':
 				case 'a':
-					components |= 3 << (8 + i * 2);
+					componentEncoding |= 3 << (8 + i * 2);
 					break;
 				default:
 					break;
@@ -199,7 +199,7 @@ namespace Gogaman
 			}
 
 			m_IR.executionOrder.emplace_back(m_IR.instructions.size());
-			AddInstruction(IR::Operation::VectorSwizzle, GetSymbolAddress(node.object->name), components);
+			AddInstruction(IR::Operation::VectorSwizzle, GetSymbolAddress(node.object->name), componentEncoding);
 			return { IR::Address::Type::InstructionPointer, (uint32_t)m_IR.instructions.size() - 1, resultType };
 		}
 
@@ -212,6 +212,7 @@ namespace Gogaman
 			if(leftAddress.GetDataType() <= Type::Integer4)
 				switch(node.operatorType)
 				{
+					//Arithmetic
 				case Token::Type::Plus:
 					operation = IR::Operation::IntegerAdd;
 					break;
@@ -227,10 +228,25 @@ namespace Gogaman
 				case Token::Type::Percent:
 					operation = IR::Operation::IntegerModulo;
 					break;
+
+					//Boolean
+				case Token::Type::Equality:
+					operation = IR::Operation::IntegerEquality;
+					break;
+				case Token::Type::Inequality:
+					operation = IR::Operation::IntegerInequality;
+					break;
+				case Token::Type::Less:
+					operation = IR::Operation::IntegerLess;
+					break;
+				case Token::Type::Greater:
+					operation = IR::Operation::IntegerGreater;
+					break;
 				}
 			else
 				switch(node.operatorType)
 				{
+					//Arithmetic
 				case Token::Type::Plus:
 					operation = IR::Operation::FloatAdd;
 					break;
@@ -246,6 +262,20 @@ namespace Gogaman
 				case Token::Type::Percent:
 					operation = IR::Operation::FloatModulo;
 					break;
+
+					//Boolean
+				case Token::Type::Equality:
+					operation = IR::Operation::FloatEquality;
+					break;
+				case Token::Type::Inequality:
+					operation = IR::Operation::FloatInequality;
+					break;
+				case Token::Type::Less:
+					operation = IR::Operation::FloatLess;
+					break;
+				case Token::Type::Greater:
+					operation = IR::Operation::FloatGreater;
+					break;
 				}
 
 			AddInstruction(operation, leftAddress, rightAddress);
@@ -258,7 +288,7 @@ namespace Gogaman
 			const IR::Address leftAddress  = node.lValue->Accept(*this);
 			const IR::Address rightAddress = node.rValue->Accept(*this);
 
-			if(node.operatorType == Token::Type::Equal)
+			if(node.operatorType == Token::Type::Assignment)
 				AddInstruction(IR::Operation::Assignment, leftAddress, rightAddress);
 
 			m_IR.executionOrder.emplace_back(m_IR.instructions.size() - 1);
@@ -270,23 +300,6 @@ namespace Gogaman
 			const IR::Address condition = node.condition->Accept(*this);
 			if(node.elseBody)
 			{
-				/*
-				const uint32_t branchOnNotEqualExecutionIndex = m_IR.executionOrder.emplace_back(m_IR.executionOrder.size());
-
-				node.ifBody->Accept(*this);
-
-				const uint32_t branchExecutionIndex = m_IR.executionOrder.emplace_back(m_IR.executionOrder.size());
-
-				const uint32_t branchTarget = m_IR.instructions.size();
-				node.elseBody->Accept(*this);
-
-				m_IR.executionOrder[branchOnNotEqualExecutionIndex] = m_IR.instructions.size();
-				AddInstruction(IR::Operation::BranchOnNotEqual, condition, IR::Address { IR::Address::Type::InstructionPointer, branchTarget });
-				
-				m_IR.executionOrder[branchExecutionIndex] = m_IR.instructions.size();
-				AddInstruction(IR::Operation::Branch, IR::Address { IR::Address::Type::InstructionPointer, (uint32_t)m_IR.executionOrder.size() });
-				*/
-
 				const uint32_t branchOnNotEqualInstructionIndex = m_IR.instructions.size();
 				m_IR.executionOrder.emplace_back(branchOnNotEqualInstructionIndex);
 				AddInstruction(IR::Operation::BranchOnNotEqual, condition, IR::Address { IR::Address::Type::InstructionPointer, 0 });
@@ -301,6 +314,9 @@ namespace Gogaman
 				
 				node.elseBody->Accept(*this);
 
+				m_IR.executionOrder.emplace_back(m_IR.instructions.size());
+				AddInstruction(IR::Operation::Branch, IR::Address { IR::Address::Type::InstructionPointer, (uint32_t)m_IR.executionOrder.size() });
+
 				m_IR.instructions[branchInstructionIndex].address1 = IR::Address { IR::Address::Type::InstructionPointer, (uint32_t)m_IR.executionOrder.size() };
 			}
 			else
@@ -308,6 +324,9 @@ namespace Gogaman
 				const uint32_t branchOnNotEqualExecutionIndex = m_IR.executionOrder.emplace_back(m_IR.executionOrder.size());
 
 				node.ifBody->Accept(*this);
+
+				m_IR.executionOrder.emplace_back(m_IR.instructions.size());
+				AddInstruction(IR::Operation::Branch, IR::Address { IR::Address::Type::InstructionPointer, (uint32_t)m_IR.executionOrder.size() });
 
 				m_IR.executionOrder[branchOnNotEqualExecutionIndex] = m_IR.instructions.size();
 				AddInstruction(IR::Operation::BranchOnNotEqual, condition, IR::Address { IR::Address::Type::InstructionPointer, (uint32_t)m_IR.executionOrder.size() });
