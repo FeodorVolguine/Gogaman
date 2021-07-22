@@ -14,9 +14,10 @@ namespace Gogaman
 		using Index      = ResourceIndexType;
 		using Generation = uint16_t;
 
-		Index      index = 0;
+		Index index = 0;
+
 		#if GM_RHI_DEBUGGING_ENABLED
-		Generation generation;
+			Generation generation;
 		#endif
 	};
 

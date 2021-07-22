@@ -313,10 +313,11 @@ namespace Gogaman
 
 			//Boolean operators
 			//== != <= >= < > && ||
+			parser.AddLeftTokenTypes(3, ParseBinaryOperation, { Token::Type::Equality, Token::Type::Inequality, Token::Type::Less, Token::Type::Greater });
 
 			//Assignment
 			//= += -= *= /= %=
-			parser.AddLeftTokenTypes(3, ParseAssignment, { Token::Type::Equal });
+			parser.AddLeftTokenTypes(3, ParseAssignment, { Token::Type::Assignment });
 
 			parser.AddNullTokenTypes(-1, ParseBooleanLiteral,       { Token::Type::BooleanLiteral });
 			parser.AddNullTokenTypes(-1, ParseIntegerLiteral,       { Token::Type::IntegerLiteral });

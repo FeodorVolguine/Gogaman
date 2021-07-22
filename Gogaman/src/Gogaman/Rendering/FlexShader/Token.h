@@ -1,6 +1,6 @@
 #pragma once
 
-#define GM_FLEX_SHADER_TOKEN_TYPE_COUNT 24
+#define GM_FLEX_SHADER_TOKEN_TYPE_COUNT 26
 
 namespace Gogaman
 {
@@ -38,7 +38,9 @@ namespace Gogaman
 				Asterisk,
 				Slash,
 				Percent,
-				Equal,
+				Assignment,
+				Equality,
+				Inequality,
 				Less,
 				Greater
 			};
@@ -73,7 +75,9 @@ namespace Gogaman
 				"Asterisk",
 				"Slash",
 				"Percent",
-				"Equal",
+				"Assignment",
+				"Equality",
+				"Inequality",
 				"Less",
 				"Greater"
 			};

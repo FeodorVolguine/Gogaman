@@ -174,6 +174,32 @@ namespace Gogaman
 					continue;
 				}
 
+				if(character == '=')
+				{
+					if(source[++cursorPosition] == '=')
+					{
+						AddAtom(Token::Type::Equality);
+						cursorPosition++;
+					}
+					else
+						AddAtom(Token::Type::Assignment);
+					
+					continue;
+				}
+
+				if(character == '!')
+				{
+					if(source[++cursorPosition] == '=')
+					{
+						AddAtom(Token::Type::Inequality);
+						cursorPosition++;
+					}
+					//else
+						//AddAtom(Token::Type::LogicalNot);
+
+					continue;
+				}
+
 				switch(character)
 				{
 				case ',':
@@ -214,9 +240,6 @@ namespace Gogaman
 					break;
 				case '}':
 					AddAtom(Token::Type::RightBrace);
-					break;
-				case '=':
-					AddAtom(Token::Type::Equal);
 					break;
 				case '<':
 					AddAtom(Token::Type::Less);

@@ -15,7 +15,7 @@
 
 #include "CodeGenerator.h"
 
-#define GM_FLEX_SHADER_ENABLE_AST_LOGGING FALSE
+#define GM_FLEX_SHADER_ENABLE_AST_LOGGING TRUE
 #define GM_FLEX_SHADER_ENABLE_IR_LOGGING  TRUE
 
 namespace Gogaman

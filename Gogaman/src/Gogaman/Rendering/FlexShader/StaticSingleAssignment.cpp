@@ -14,52 +14,14 @@ namespace Gogaman
 			{
 				EliminateRedunantBranches();
 
-				GM_LOG_CORE_INFO("_______________________________________");
-				GM_LOG_CORE_INFO("IR after eliminating redundant branches");
+				GM_LOG_CORE_INFO("_");
+				GM_LOG_CORE_INFO("Intermediate representation after eliminating redundant branches");
 				LogIR(m_IR);
 
 				BuildControlFlowGraph();
 
-				//for(auto i = 0; i < 13; i++)
-					//m_ControlFlowGraph.CreateVertex();
-
-				//CMPUT 680 example
-				//m_ControlFlowGraph.CreateEdge(0, 1);
-				//m_ControlFlowGraph.CreateEdge(0, 4);
-				//m_ControlFlowGraph.CreateEdge(0, 8);
-				//m_ControlFlowGraph.CreateEdge(1, 2);
-				//m_ControlFlowGraph.CreateEdge(4, 5);
-				//m_ControlFlowGraph.CreateEdge(4, 6);
-				//m_ControlFlowGraph.CreateEdge(8, 9);
-				//m_ControlFlowGraph.CreateEdge(8, 10);
-				//m_ControlFlowGraph.CreateEdge(2, 2);
-				//m_ControlFlowGraph.CreateEdge(2, 3);
-				//m_ControlFlowGraph.CreateEdge(5, 3);
-				//m_ControlFlowGraph.CreateEdge(5, 7);
-				//m_ControlFlowGraph.CreateEdge(6, 7);
-				//m_ControlFlowGraph.CreateEdge(6, 11);
-				//m_ControlFlowGraph.CreateEdge(9, 11);
-				//m_ControlFlowGraph.CreateEdge(10, 11);
-				//m_ControlFlowGraph.CreateEdge(11, 12);
-				//m_ControlFlowGraph.CreateEdge(7, 4);
-				//m_ControlFlowGraph.CreateEdge(7, 12);
-				//m_ControlFlowGraph.CreateEdge(3, 12);
-
-				//Figure 4 graph
-				//m_ControlFlowGraph.CreateEdge(0, 4);
-				//m_ControlFlowGraph.CreateEdge(0, 3);
-				//m_ControlFlowGraph.CreateEdge(4, 5);
-				//m_ControlFlowGraph.CreateEdge(3, 2);
-				//m_ControlFlowGraph.CreateEdge(3, 1);
-				//m_ControlFlowGraph.CreateEdge(1, 2);
-				//m_ControlFlowGraph.CreateEdge(2, 1);
-				//m_ControlFlowGraph.CreateEdge(5, 1);
-				//m_ControlFlowGraph.CreateEdge(1, 5);
-
 				//Build flattened dominator tree
 				const std::vector<uint16_t> postOrder = m_ControlFlowGraph.PostOrder(0);
-				for(auto i : postOrder)
-					printf("%d\n", i);
 
 				std::vector<uint16_t> postOrderIndices;
 				postOrderIndices.resize(postOrder.size());
@@ -108,8 +70,14 @@ namespace Gogaman
 					}
 				}
 
-				for(auto i = 0; i < dominators.size(); i++)
-					GM_LOG_CORE_INFO("Immediate dominator of node %d: %d", postOrder[i], postOrder[dominators[i]]);
+				//for(auto i = 0; i < dominators.size(); i++)
+					//GM_LOG_CORE_INFO("Immediate dominator of node %d: %d", postOrder[i], postOrder[dominators[i]]);
+
+				//Build dominator tree
+				std::vector<std::vector<uint16_t>> dominatorChildren(m_ControlFlowGraph.GetVertexCount());
+				//Skip last because first block should not have any children (dominator array says entry node is its own dominator)
+				for(auto i = 0; i < dominators.size() - 1; i++)
+					dominatorChildren[postOrder[dominators[i]]].emplace_back(postOrder[i]);
 
 				//Calculate dominance frontiers
 				std::vector<std::set<uint16_t>> dominanceFrontiers;
@@ -130,54 +98,23 @@ namespace Gogaman
 							}
 						}
 				}
-
+				/*
 				for(auto i = 0; i < dominanceFrontiers.size(); i++)
 				{
 					GM_LOG_CORE_INFO("Dominance frontiers of node %d:", postOrder[i]);
 					for(auto j : dominanceFrontiers[i])
 						GM_LOG_CORE_INFO("	%d", j);
-				}
+				}*/
 
-				/*
-				Rebuild IR in SSA form (with phi-functions and variable version declaration instructions inserted)
-				-Can we do it simultaniously?
-				*/
-
-				//Mapping from versionedID -> originalID 
 				std::unordered_map<Address, Address, HashAddress> originalVariableAddresses;
-				/*
+				
+				//Identify phi functions
+				std::vector<std::vector<PhiFunction>> blockPhiFunctions(m_BasicBlocks.size());
 				for(uint16_t i = 0; i < m_BasicBlocks.size(); i++)
 				{
-					auto &[startInstructionIndex, endInstructionIndex] = m_BasicBlocks[i];
-
-					uint32_t currentInstructionIndex = startInstructionIndex;
-					while(currentInstructionIndex != endInstructionIndex)
+					for(const uint32_t x : m_BasicBlocks[i])
 					{
-						Instruction &currentInstruction = m_IR.instructions[currentInstructionIndex];
-						if(currentInstruction.operation == Operation::Assignment)
-						{
-							const Address originalAddress = currentInstruction.address1;
-							//New variable version (might need to insert variable declaration instruction...)
-							currentInstruction.address1 = Address(Address::Type::Variable, m_IR.variableSpecifiers.size(), currentInstruction.address1.GetDataType());
-							//Copy variable specifier
-							m_IR.variableSpecifiers.emplace_back(m_IR.variableSpecifiers[originalAddress.GetValue()]);
-
-							originalVariableAddresses[currentInstruction.address1] = originalAddress;
-						}
-
-						currentInstructionIndex++;
-					}
-				}
-				*/
-
-				std::vector<std::vector<Address>> blockPhiFunctions(m_BasicBlocks.size());
-				for(uint16_t i = 0; i < m_BasicBlocks.size(); i++)
-				{
-					auto &[startInstructionIndex, endInstructionIndex] = m_BasicBlocks[i];
-					uint32_t currentInstructionIndex = startInstructionIndex;
-					while(currentInstructionIndex != endInstructionIndex + 1)
-					{
-						Instruction &currentInstruction = m_IR.instructions[currentInstructionIndex];
+						Instruction &currentInstruction = m_IR.instructions[x];
 						if(currentInstruction.operation == Operation::Assignment)
 						{
 							//Assumption: LHS of assignment is always either variable address, variable declaration instruction, or swizzle instruction
@@ -186,7 +123,7 @@ namespace Gogaman
 
 							const auto IsBlockUsingVariable = [&](const uint16_t blockIndex, const Address address)
 							{
-								for(uint32_t j = m_BasicBlocks[blockIndex].first; j != m_BasicBlocks[blockIndex].second; j++)
+								for(uint32_t j : m_BasicBlocks[blockIndex])
 									if((m_IR.instructions[j].operation == Operation::Assignment) || (m_IR.instructions[j].operation == Operation::FunctionParameter))
 										if(ContainsVariable(m_IR.instructions[j], address))
 											return true;
@@ -196,16 +133,35 @@ namespace Gogaman
 
 							for(const uint16_t j : dominanceFrontiers[postOrderIndices[i]])
 								if(IsBlockUsingVariable(j, definedVariable))
-									blockPhiFunctions[j].emplace_back(definedVariable);
-						}
+								{
+									bool foundExistingPhiFunction = false;
+									for(PhiFunction &k : blockPhiFunctions[j])
+										if(k.definedVariable == definedVariable)
+										{
+											k.parameters[i] = definedVariable;
+											foundExistingPhiFunction = true;
+										}
 
-						currentInstructionIndex++;
+									if(!foundExistingPhiFunction)
+									{
+										PhiFunction &phiFunction = blockPhiFunctions[j].emplace_back();
+										phiFunction.definedVariable = definedVariable;
+										phiFunction.parameters[i] = definedVariable;
+									}
+								}
+						}
+						else if(currentInstruction.operation == Operation::VariableDeclaration)
+							originalVariableAddresses[currentInstruction.address1] = currentInstruction.address1;
 					}
 				}
 
-				for(uint16_t i = 0; i < blockPhiFunctions.size(); i++)
-					for(uint16_t j = 0; j < blockPhiFunctions[i].size(); j++)
-						GM_LOG_CORE_INFO("Block %d | Phi arg %d: %d %s (%s)", i, j, blockPhiFunctions[i][j].GetValue(), GetTypeString(blockPhiFunctions[i][j].GetDataType()).c_str(), Address::GetTypeString(blockPhiFunctions[i][j].GetType()).c_str());
+				//Rename variables
+				//std::vector<std::stack<Address>> variableVersions(m_IR.variableSpecifiers.size());
+				//RenameVariables(blockPhiFunctions, dominatorChildren, originalVariableAddresses, 0, variableVersions);
+
+				GM_LOG_CORE_INFO("_");
+				GM_LOG_CORE_INFO("Intermediate representation after variable renaming");
+				LogSSA(*this);
 			}
 
 			void SSA::EliminateRedunantBranches()
@@ -269,14 +225,14 @@ namespace Gogaman
 						blockEnd = i;
 
 					leaderBlockIndices[blockStart] = m_BasicBlocks.size();
-					m_BasicBlocks.emplace_back(blockStart, blockEnd);
+					m_BasicBlocks.emplace_back(Block(m_IR.executionOrder.begin() + blockStart, m_IR.executionOrder.begin() + blockEnd + 1));
 					m_ControlFlowGraph.CreateVertex();
 				}
 
 				//Create graph edges
 				for(uint16_t i = 0; i < m_BasicBlocks.size(); i++)
 				{
-					const uint32_t endInstructionExecutionIndex = m_IR.executionOrder[m_BasicBlocks[i].second];
+					const uint32_t endInstructionExecutionIndex = m_BasicBlocks[i].back();
 					const Instruction &endInstruction = m_IR.instructions[endInstructionExecutionIndex];
 					if(endInstruction.operation == Operation::Branch)
 						m_ControlFlowGraph.CreateEdge(i, leaderBlockIndices[instructionExecutionIndices[endInstruction.address1.GetValue()]]);
@@ -289,6 +245,68 @@ namespace Gogaman
 					else if((endInstructionExecutionIndex + 1) != m_IR.executionOrder.size())
 						m_ControlFlowGraph.CreateEdge(i, leaderBlockIndices[endInstructionExecutionIndex + 1]);
 				}
+			}
+
+			void SSA::RenameVariables(std::vector<std::vector<PhiFunction>> &blockPhiFunctions, const std::vector<std::vector<uint16_t>> &dominatorChildren, std::unordered_map<Address, Address, HashAddress> &originalVariableAddresses, uint16_t blockIndex, std::vector<std::stack<Address>> &variableVersions)
+			{
+				std::vector<Address> renamedVariables;
+
+				for(auto &i : blockPhiFunctions[blockIndex])
+				{
+					RenameVariable(originalVariableAddresses, variableVersions, i.definedVariable);
+					//Insert variable declaration instruction? (is it needed for phi functions?)
+					renamedVariables.emplace_back(i.definedVariable);
+				}
+
+				for(uint32_t i = 0; i < m_BasicBlocks[blockIndex].size(); i++)
+				{
+					Instruction &currentInstruction = m_IR.instructions[i];
+
+					//TODO Replace all variable uses with latest version (binary ops)
+					if(currentInstruction.operation == Operation::FloatMultiply)
+						currentInstruction.address1 = variableVersions[originalVariableAddresses[currentInstruction.address1].GetValue()].top();
+
+					if(currentInstruction.operation == Operation::Assignment)
+					{
+						//Gather all variables in RHS of asmnt and replace them with latest version here...
+
+						//Assumption: LHS of assignment is always either variable address, variable declaration instruction, or swizzle instruction
+						GM_DEBUG_ASSERT((currentInstruction.address1.GetType() == Address::Type::Variable) || (currentInstruction.address1.GetType() == Address::Type::InstructionPointer), "Failed to generate FlexShader SSA phi functions | Invalid assignment instruction");
+						Address &definedVariable = (currentInstruction.address1.GetType() == Address::Type::Variable) ? currentInstruction.address1 : m_IR.instructions[currentInstruction.address1.GetValue()].address1;
+						RenameVariable(originalVariableAddresses, variableVersions, definedVariable);
+
+						//Insert variable declaration instruction
+						m_BasicBlocks[blockIndex].insert(m_BasicBlocks[blockIndex].begin() + i++, m_IR.instructions.size());
+						m_IR.instructions.emplace_back(Operation::VariableDeclaration, definedVariable);
+						renamedVariables.emplace_back(m_IR.instructions.back().address1);
+					}
+				}
+
+				for(uint16_t i : m_ControlFlowGraph.OutgoingConnections(blockIndex))
+					for(auto &j : blockPhiFunctions[i])
+						j.parameters[blockIndex] = variableVersions[originalVariableAddresses[j.parameters[blockIndex]].GetValue()].top();
+
+				for(uint16_t i : dominatorChildren[blockIndex])
+					RenameVariables(blockPhiFunctions, dominatorChildren, originalVariableAddresses, i, variableVersions);
+
+				for(Address i : renamedVariables)
+					variableVersions[originalVariableAddresses[i].GetValue()].pop();
+			}
+
+			void SSA::RenameVariable(std::unordered_map<Address, Address, HashAddress> &originalVariableAddresses, std::vector<std::stack<Address>> &variableVersions, Address &variable)
+			{
+				const Address originalVariable = variable;
+				//New variable version
+				variable = Address(Address::Type::Variable, m_IR.variableSpecifiers.size(), variable.GetDataType());
+				//Variable specifier
+				m_IR.variableSpecifiers.emplace_back(m_IR.variableSpecifiers[originalVariable.GetValue()]);
+
+				GM_LOG_CORE_INFO("Renaming variable %s to %s", AddressString(originalVariable).c_str(), AddressString(variable).c_str());
+
+				originalVariableAddresses[variable] = originalVariable;
+
+				//Push new version as the most recent definition
+				variableVersions[originalVariable.GetValue()].emplace(variable);
 			}
 		}
 	}
